@@ -21,8 +21,10 @@ async def test_repeated_upload_of_same_hash_reuses_task_id(task_store):
 
     assert await task_store.get_task_id_for_hash(file_hash) is None
 
-    record = await task_store.create_task("task-1", filename="doc.txt")
-    await task_store.link_hash_to_task(file_hash, record.task_id)
+    reserved = await task_store.create_task_if_hash_absent(
+        file_hash, "task-1", filename="doc.txt"
+    )
+    assert reserved is True
 
     # Simulate the second, identical upload: it must resolve to the same task_id
     # instead of a new one being created.
@@ -47,3 +49,17 @@ async def test_task_status_lifecycle_is_persisted(task_store):
 
     final = await task_store.get_task("task-2")
     assert final.status == TaskStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_atomic_hash_reservation_allows_only_one_task(task_store):
+    file_hash = sha256_bytes(b"same content")
+    first = await task_store.create_task_if_hash_absent(
+        file_hash, "task-a", "a.txt"
+    )
+    second = await task_store.create_task_if_hash_absent(
+        file_hash, "task-b", "b.txt"
+    )
+    assert first is True
+    assert second is False
+    assert await task_store.get_task_id_for_hash(file_hash) == "task-a"

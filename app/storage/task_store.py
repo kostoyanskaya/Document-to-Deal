@@ -30,6 +30,31 @@ class TaskStore:
         await self._redis.set(_TASK_PREFIX + task_id, record.model_dump_json())
         return record
 
+    async def create_task_if_hash_absent(
+        self, file_hash: str, task_id: str, filename: str
+    ) -> bool:
+        """Atomically reserve a content hash and create its task record.
+
+        SET NX prevents two concurrent identical uploads from creating
+        separate tasks between a read and a later write.
+        """
+        record = TaskRecord(
+            task_id=task_id,
+            status=TaskStatus.QUEUED,
+            filename=filename,
+            created_at=_now_iso(),
+            updated_at=_now_iso(),
+        )
+        hash_key = _HASH_PREFIX + file_hash
+        task_key = _TASK_PREFIX + task_id
+        async with self._redis.pipeline(transaction=True) as pipe:
+            pipe.set(hash_key, task_id, ex=self._ttl, nx=True)
+            pipe.set(task_key, record.model_dump_json())
+            reserved, _ = await pipe.execute()
+        if not reserved:
+            await self._redis.delete(task_key)
+        return bool(reserved)
+
     async def get_task(self, task_id: str) -> TaskRecord | None:
         raw = await self._redis.get(_TASK_PREFIX + task_id)
         if raw is None:

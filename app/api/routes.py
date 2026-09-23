@@ -14,7 +14,7 @@ from fastapi import (
 )
 
 from app.config import Settings, get_settings
-from app.core.hashing import sha256_bytes
+from app.core.hashing import sha256_file
 from app.deps import get_task_store
 from app.models.schemas import (
     ApproveResponse,
@@ -49,54 +49,81 @@ async def upload_document(
             ),
         )
 
-    data = await file.read()
     max_bytes = settings.max_file_size_mb * 1024 * 1024
-    if len(data) > max_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File exceeds {settings.max_file_size_mb} MB limit",
-        )
-    if len(data) == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Empty file",
-        )
-
-    file_hash = sha256_bytes(data)
-
-    existing_task_id = await store.get_task_id_for_hash(file_hash)
-    if existing_task_id:
-        record = await store.get_task(existing_task_id)
-        logger.info(
-            "idempotent_upload_hit",
-            extra={
-                "hash_prefix": file_hash[:12],
-                "task_id": existing_task_id,
-            },
-        )
-        return UploadResponse(
-            task_id=existing_task_id,
-            status=record.status if record else TaskStatus.QUEUED,
-            idempotent=True,
-        )
-
     task_id = str(uuid.uuid4())
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
     dest_path = upload_dir / f"{task_id}{suffix}"
-    dest_path.write_bytes(data)
 
-    await store.create_task(task_id, filename=file.filename or "document")
-    await store.link_hash_to_task(file_hash, task_id)
+    total_bytes = 0
+    try:
+        with dest_path.open("wb") as output:
+            while chunk := await file.read(1024 * 1024):
+                total_bytes += len(chunk)
+                if total_bytes > max_bytes:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"File exceeds {settings.max_file_size_mb} MB limit",
+                    )
+                output.write(chunk)
 
-    logger.info(
-        "document_uploaded",
-        extra={
-            "task_id": task_id,
-            "size_bytes": len(data),
-            "hash_prefix": file_hash[:12],
-        },
-    )
+        if total_bytes == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Empty file",
+            )
+
+        file_hash = sha256_file(dest_path)
+        existing_task_id = await store.get_task_id_for_hash(file_hash)
+        if existing_task_id:
+            dest_path.unlink(missing_ok=True)
+            record = await store.get_task(existing_task_id)
+            logger.info(
+                "idempotent_upload_hit",
+                extra={"hash_prefix": file_hash[:12], "task_id": existing_task_id},
+            )
+            return UploadResponse(
+                task_id=existing_task_id,
+                status=record.status if record else TaskStatus.QUEUED,
+                idempotent=True,
+            )
+
+        reserved = await store.create_task_if_hash_absent(
+            file_hash, task_id, file.filename or "document"
+        )
+        if not reserved:
+            existing_task_id = await store.get_task_id_for_hash(file_hash)
+            dest_path.unlink(missing_ok=True)
+            if not existing_task_id:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Could not resolve idempotent task",
+                )
+            record = await store.get_task(existing_task_id)
+            return UploadResponse(
+                task_id=existing_task_id,
+                status=record.status if record else TaskStatus.QUEUED,
+                idempotent=True,
+            )
+
+        logger.info(
+            "document_uploaded",
+            extra={
+                "task_id": task_id,
+                "size_bytes": total_bytes,
+                "hash_prefix": file_hash[:12],
+            },
+        )
+    except HTTPException:
+        dest_path.unlink(missing_ok=True)
+        raise
+    except Exception:
+        dest_path.unlink(missing_ok=True)
+        logger.exception("document_upload_failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not store document",
+        )
 
     process_document.delay(task_id, str(dest_path))
 

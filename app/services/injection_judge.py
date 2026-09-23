@@ -59,11 +59,30 @@ async def judge_for_injection(adapter: LLMAdapter, text: str, *, enabled: bool) 
         logger.warning("injection_judge_malformed_response")
         return JudgeResult(verdict=SecurityVerdict.NEEDS_REVIEW, reason="judge_malformed_response", ran=True)
 
-    is_injection = bool(raw.get("is_injection"))
+    is_injection_raw = raw.get("is_injection")
+    if not isinstance(is_injection_raw, bool):
+        logger.warning("injection_judge_invalid_boolean")
+        return JudgeResult(
+            verdict=SecurityVerdict.NEEDS_REVIEW,
+            reason="judge_invalid_boolean",
+            ran=True,
+        )
+    is_injection = is_injection_raw
+
     try:
         confidence = float(raw.get("confidence", 0.0))
     except (TypeError, ValueError):
-        confidence = 0.0
+        return JudgeResult(
+            verdict=SecurityVerdict.NEEDS_REVIEW,
+            reason="judge_invalid_confidence",
+            ran=True,
+        )
+    if not 0.0 <= confidence <= 1.0:
+        return JudgeResult(
+            verdict=SecurityVerdict.NEEDS_REVIEW,
+            reason="judge_invalid_confidence",
+            ran=True,
+        )
     reason = str(raw.get("reason", ""))[:200]
 
     if is_injection and confidence >= 0.5:

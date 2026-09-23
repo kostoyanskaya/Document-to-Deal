@@ -13,12 +13,17 @@ class DocumentParsingError(Exception):
 def extract_text(file_path: Path) -> str:
     suffix = file_path.suffix.lower()
     if suffix == ".txt":
-        return _extract_txt(file_path)
-    if suffix == ".pdf":
-        return _extract_pdf(file_path)
-    if suffix == ".docx":
-        return _extract_docx(file_path)
-    raise DocumentParsingError(f"Unsupported file extension: {suffix}")
+        text = _extract_txt(file_path)
+    elif suffix == ".pdf":
+        text = _extract_pdf(file_path)
+    elif suffix == ".docx":
+        text = _extract_docx(file_path)
+    else:
+        raise DocumentParsingError(f"Unsupported file extension: {suffix}")
+
+    if not text.strip():
+        raise DocumentParsingError("Document contains no extractable text")
+    return text
 
 
 def _extract_txt(file_path: Path) -> str:

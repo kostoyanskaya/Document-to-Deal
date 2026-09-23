@@ -10,7 +10,7 @@ from app.config import Settings, get_settings
 from app.core.security import detect_prompt_injection
 from app.models.schemas import LeadCard, PipelineResult, SecurityVerdict, TaskStatus
 from app.services.chunking import split_into_chunks
-from app.services.extraction import extract_text
+from app.services.extraction import DocumentParsingError, extract_text
 from app.services.injection_judge import judge_for_injection
 from app.services.llm_adapter import LLMAdapter, LLMError, get_llm_adapter
 from app.services.output_guard import find_leaked_system_prompt_fragments
@@ -66,8 +66,11 @@ async def _call_extraction_with_retries(adapter: LLMAdapter, chunk: str, setting
                 "llm_extraction_attempt_failed",
                 extra={"attempt": attempt, "error_type": type(exc).__name__},
             )
-    logger.error("llm_extraction_failed_after_retries", extra={"error_type": type(last_error).__name__ if last_error else None})
-    return {"task": "Не удалось извлечь данные из документа (ошибка LLM после повторных попыток)"}
+    logger.error(
+        "llm_extraction_failed_after_retries",
+        extra={"error_type": type(last_error).__name__ if last_error else None},
+    )
+    raise LLMError("Structured lead extraction failed after retries") from last_error
  
  
 async def _extract_lead_card(adapter: LLMAdapter, text: str, settings: Settings) -> LeadCard:
@@ -85,10 +88,9 @@ async def _extract_lead_card(adapter: LLMAdapter, text: str, settings: Settings)
  
     try:
         return LeadCard.model_validate(merged)
-    except ValidationError:
-        logger.warning("lead_card_final_validation_failed_using_fallback")
-        merged.setdefault("task", "Не удалось однозначно определить задачу клиента")
-        return LeadCard.model_validate(merged)
+    except ValidationError as exc:
+        logger.error("lead_card_final_validation_failed")
+        raise LLMError("Final lead card validation failed") from exc
  
  
 async def _generate_brief_and_proposal(adapter: LLMAdapter, lead_card: LeadCard) -> tuple[str, str]:
@@ -106,6 +108,18 @@ async def _generate_brief_and_proposal(adapter: LLMAdapter, lead_card: LeadCard)
             f"'Этапы пилота' и 'Вопросы для уточнения':\n{payload}"
         ),
     )
+    if not brief.strip() or not proposal.strip():
+        raise LLMError("LLM returned an empty Markdown result")
+
+    required_sections = (
+        "ценность для клиента",
+        "этапы пилота",
+        "вопросы для уточнения",
+    )
+    proposal_lower = proposal.lower()
+    if not all(section in proposal_lower for section in required_sections):
+        raise LLMError("Proposal is missing required sections")
+
     return brief, proposal
  
  
@@ -122,7 +136,16 @@ def _blocked_result(verdict: SecurityVerdict, reasons: list[str]) -> PipelineRes
 async def run_pipeline(file_path: Path, settings: Settings | None = None) -> PipelineResult:
     settings = settings or get_settings()
  
-    text = extract_text(file_path)
+    try:
+        text = extract_text(file_path)
+    except DocumentParsingError as exc:
+        logger.warning("document_parsing_failed", extra={"error_type": type(exc).__name__})
+        return PipelineResult(
+            status=TaskStatus.FAILED,
+            security_verdict=SecurityVerdict.CLEAN,
+            error="Document could not be parsed",
+        )
+
     logger.info("document_text_extracted", extra={"chars": len(text)})
     detection = detect_prompt_injection(text)
     logger.info(
