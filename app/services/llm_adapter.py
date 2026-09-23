@@ -8,22 +8,29 @@ from typing import Any
 
 from app.config import Settings
 
+
 logger = logging.getLogger(__name__)
 
 
 class LLMError(Exception):
-    """Raised for any provider failure: network error, timeout, invalid JSON, etc."""
+    """Raised for any provider failure."""
 
 
 class LLMAdapter(ABC):
     @abstractmethod
     async def complete_json(
-        self, system_prompt: str, user_prompt: str
+        self,
+        system_prompt: str,
+        user_prompt: str,
     ) -> dict[str, Any]:
-        """Return a parsed JSON object. Raises LLMError if the call or parsing fails."""
+        """Return a parsed JSON object."""
 
     @abstractmethod
-    async def complete_text(self, system_prompt: str, user_prompt: str) -> str:
+    async def complete_text(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> str:
         """Return raw text output (used for Markdown generation)."""
 
 
@@ -39,7 +46,6 @@ def _strip_code_fences(raw: str) -> str:
 
 
 class MockLLMAdapter(LLMAdapter):
-
     _FIELD_MARKERS: dict[str, list[str]] = {
         "company": ["компания:", "клиент:", "company:", "client:"],
         "industry": ["отрасль:", "industry:"],
@@ -60,16 +66,25 @@ class MockLLMAdapter(LLMAdapter):
         ],
         "risks": ["риски:", "risks:"],
     }
-    _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+
+    _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w\.-]+")
     _PHONE_RE = re.compile(
-        r"(?:\+7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}"
+        r"(?:\+7|8)[\s\-]?\(?\d{3}\)?[\s\-]?"
+        r"\d{3}[\s\-]?\d{2}[\s\-]?\d{2}"
     )
 
     def _all_marker_strings(self) -> list[str]:
-        return [m for markers in self._FIELD_MARKERS.values() for m in markers]
+        return [
+            m
+            for markers in self._FIELD_MARKERS.values()
+            for m in markers
+        ]
 
     def _find_after(
-        self, text: str, lower: str, markers: list[str]
+        self,
+        text: str,
+        lower: str,
+        markers: list[str],
     ) -> str | None:
         all_markers = self._all_marker_strings()
         for marker in markers:
@@ -77,16 +92,14 @@ class MockLLMAdapter(LLMAdapter):
             if idx == -1:
                 continue
             start = idx + len(marker)
-            window = text[start : start + 500]
+            window = text[start: start + 500]
             window_lower = window.lower()
             blank_line_pos = window_lower.find("\n\n")
             end = blank_line_pos if blank_line_pos != -1 else len(window)
-
             for other in all_markers:
                 other_pos = window_lower.find(other)
                 if other_pos != -1 and other_pos > 0:
                     end = min(end, other_pos)
-
             value = window[:end]
             value = " ".join(value.split())
             value = value.strip(" :-\t")
@@ -95,9 +108,16 @@ class MockLLMAdapter(LLMAdapter):
         return None
 
     def _extract_contact(
-        self, text: str, lower: str, fallback_email: str | None
+        self,
+        text: str,
+        lower: str,
+        fallback_email: str | None,
     ) -> dict[str, Any] | None:
-        raw = self._find_after(text, lower, self._FIELD_MARKERS["contact"])
+        raw = self._find_after(
+            text,
+            lower,
+            self._FIELD_MARKERS["contact"],
+        )
         email = (
             fallback_email
             or (self._EMAIL_RE.search(raw) if raw else None)
@@ -107,37 +127,48 @@ class MockLLMAdapter(LLMAdapter):
             email = email.group(0)
         if not raw:
             return {"email": email} if email else None
-
         phone_match = self._PHONE_RE.search(raw)
         phone = phone_match.group(0) if phone_match else None
-        raw_parts = [p.strip() for p in re.split(r"[,;]", raw) if p.strip()]
+        raw_parts = [
+            p.strip()
+            for p in re.split(r"[,;]", raw)
+            if p.strip()
+        ]
         text_parts: list[str] = []
         for part in raw_parts:
             cleaned = self._EMAIL_RE.sub("", part)
             cleaned = self._PHONE_RE.sub("", cleaned).strip()
             if cleaned:
                 text_parts.append(cleaned)
-
         name = text_parts[0] if text_parts else None
         position = text_parts[1] if len(text_parts) > 1 else None
-
         if not any([name, email, phone, position]):
             return None
-        return {"name": name, "email": email, "phone": phone, "position": position}
+        return {
+            "name": name,
+            "email": email,
+            "phone": phone,
+            "position": position,
+        }
 
     @staticmethod
     def _split_list_value(value: str | None) -> list[str]:
         if not value:
             return []
         items = re.split(r"[,;•]|(?:\s-\s)", value)
-        return [item.strip(" .") for item in items if item.strip(" .")]
+        return [
+            item.strip(" .")
+            for item in items
+            if item.strip(" .")
+        ]
 
     async def complete_json(
-        self, system_prompt: str, user_prompt: str
+        self,
+        system_prompt: str,
+        user_prompt: str,
     ) -> dict[str, Any]:
         text = user_prompt
         lower = text.lower()
-
         scalar_keys = (
             "company",
             "industry",
@@ -148,27 +179,41 @@ class MockLLMAdapter(LLMAdapter):
             "expected_result",
         )
         fields = {
-            key: self._find_after(text, lower, self._FIELD_MARKERS[key])
+            key: self._find_after(
+                text,
+                lower,
+                self._FIELD_MARKERS[key],
+            )
             for key in scalar_keys
         }
-
         email_match = self._EMAIL_RE.search(text)
         global_email = email_match.group(0) if email_match else None
         integrations = self._split_list_value(
-            self._find_after(text, lower, self._FIELD_MARKERS["integrations"])
+            self._find_after(
+                text,
+                lower,
+                self._FIELD_MARKERS["integrations"],
+            )
         )
         risks = self._split_list_value(
-            self._find_after(text, lower, self._FIELD_MARKERS["risks"])
+            self._find_after(
+                text,
+                lower,
+                self._FIELD_MARKERS["risks"],
+            )
         )
-
-        contact = self._extract_contact(text, lower, fallback_email=global_email)
-
-        task = (
-            fields.get("task")
-            or (text.strip().split("\n")[0][:200] if text.strip() else None)
-            or ("Не удалось однозначно определить задачу клиента")
+        contact = self._extract_contact(
+            text,
+            lower,
+            fallback_email=global_email,
         )
-
+        task = fields.get("task") or (
+            text.strip().split("\n")[0][:200]
+            if text.strip()
+            else None
+        ) or (
+            "Не удалось однозначно определить задачу клиента"
+        )
         missing = [
             label
             for label, value in {
@@ -178,7 +223,6 @@ class MockLLMAdapter(LLMAdapter):
             }.items()
             if not value
         ]
-
         return {
             "company": fields.get("company"),
             "industry": fields.get("industry"),
@@ -193,7 +237,11 @@ class MockLLMAdapter(LLMAdapter):
             "missing_data": missing,
         }
 
-    async def complete_text(self, system_prompt: str, user_prompt: str) -> str:
+    async def complete_text(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> str:
         lower_prompt = user_prompt.lower()
         if (
             "коммерческого предложения" in lower_prompt
@@ -214,19 +262,21 @@ class MockLLMAdapter(LLMAdapter):
             "## Ключевые наблюдения\n"
             "- Задача клиента и доступные структурированные поля "
             "перечислены в карточке лида\n"
-            "- Недостающие данные (бюджет, сроки, контакт) отмечены "
-            "отдельно и требуют уточнения\n\n"
+            "- Недостающие данные (бюджет, сроки, контакт) "
+            "отмечены отдельно и требуют уточнения\n\n"
             "## Риски\n"
-            "- См. поле `risks` в карточке лида, если были обнаружены "
-            "подозрительные фрагменты\n"
+            "- См. поле `risks` в карточке лида, если были "
+            "обнаружены подозрительные фрагменты\n"
         )
 
     @staticmethod
     def _mock_proposal() -> str:
         return (
             "# Черновик коммерческого предложения (draft)\n\n"
-            "_Сгенерировано без обращения к реальной LLM (`LLM_PROVIDER=mock`). "
-            "Статус: **draft** — не отправлено клиенту и не передано в CRM._\n\n"
+            "_Сгенерировано без обращения к реальной LLM "
+            "(`LLM_PROVIDER=mock`). "
+            "Статус: **draft** — не отправлено клиенту "
+            "и не передано в CRM._\n\n"
             "## Ценность для клиента\n"
             "- Быстрая первичная квалификация входящих заявок\n"
             "- Структурированные данные для менеджера по продажам "
@@ -235,8 +285,8 @@ class MockLLMAdapter(LLMAdapter):
             "1. Приём документа и проверка на попытки prompt injection\n"
             "2. Извлечение структурированной карточки лида\n"
             "3. Генерация брифа и черновика КП\n"
-            "4. Ручное одобрение (без автоматической отправки клиенту "
-            "или в CRM)\n\n"
+            "4. Ручное одобрение (без автоматической отправки "
+            "клиенту или в CRM)\n\n"
             "## Вопросы для уточнения\n"
             "- Требуется уточнить бюджет и точные сроки проекта\n"
             "- Нужны ли дополнительные интеграции, не указанные "
@@ -254,57 +304,89 @@ class OpenAIAdapter(LLMAdapter):
     ) -> None:
         from openai import AsyncOpenAI
 
-        kwargs: dict[str, Any] = {"api_key": api_key, "timeout": timeout}
+        kwargs: dict[str, Any] = {
+            "api_key": api_key,
+            "timeout": timeout,
+        }
         if base_url:
             kwargs["base_url"] = base_url
         self._client = AsyncOpenAI(**kwargs)
         self._model = model
 
     async def complete_json(
-        self, system_prompt: str, user_prompt: str
+        self,
+        system_prompt: str,
+        user_prompt: str,
     ) -> dict[str, Any]:
         try:
             resp = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": user_prompt,
+                    },
                 ],
                 response_format={"type": "json_object"},
                 temperature=0,
             )
-        except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"LLM call failed: {type(exc).__name__}") from exc
-
+        except Exception as exc:
+            raise LLMError(
+                f"LLM call failed: {type(exc).__name__}"
+            ) from exc
         raw = resp.choices[0].message.content or "{}"
         try:
             return json.loads(_strip_code_fences(raw))
         except json.JSONDecodeError as exc:
-            raise LLMError(f"Model returned invalid JSON: {exc}") from exc
+            raise LLMError(
+                f"Model returned invalid JSON: {exc}"
+            ) from exc
 
-    async def complete_text(self, system_prompt: str, user_prompt: str) -> str:
+    async def complete_text(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> str:
         try:
             resp = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": user_prompt,
+                    },
                 ],
                 temperature=0.4,
             )
         except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"LLM call failed: {type(exc).__name__}") from exc
+            raise LLMError(
+                f"LLM call failed: {type(exc).__name__}"
+            ) from exc
         return resp.choices[0].message.content or ""
 
 
 class DeepSeekAdapter(OpenAIAdapter):
-    """DeepSeek exposes an OpenAI-compatible Chat Completions API."""
 
     def __init__(
-        self, api_key: str, model: str, base_url: str, timeout: int
+        self,
+        api_key: str,
+        model: str,
+        base_url: str,
+        timeout: int,
     ) -> None:
         super().__init__(
-            api_key=api_key, model=model, timeout=timeout, base_url=base_url
+            api_key=api_key,
+            model=model,
+            timeout=timeout,
+            base_url=base_url,
         )
 
 
@@ -313,7 +395,9 @@ def get_llm_adapter(settings: Settings) -> LLMAdapter:
         return MockLLMAdapter()
     if settings.llm_provider == "openai":
         if not settings.openai_api_key:
-            raise LLMError("OPENAI_API_KEY is not set but LLM_PROVIDER=openai")
+            raise LLMError(
+                "OPENAI_API_KEY is not set but LLM_PROVIDER=openai"
+            )
         return OpenAIAdapter(
             settings.openai_api_key,
             settings.openai_model,
@@ -330,4 +414,6 @@ def get_llm_adapter(settings: Settings) -> LLMAdapter:
             settings.deepseek_base_url,
             settings.llm_timeout_seconds,
         )
-    raise LLMError(f"Unknown LLM provider: {settings.llm_provider}")
+    raise LLMError(
+        f"Unknown LLM provider: {settings.llm_provider}"
+    )

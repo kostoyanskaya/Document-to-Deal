@@ -1,10 +1,3 @@
-"""API tests.
-
-The Celery dispatch (`process_document.delay`) is monkeypatched to a no-op so
-these tests exercise only the HTTP layer (validation, idempotency wiring,
-status codes) without needing a running worker or broker. The pipeline logic
-itself is covered end to end in `test_pipeline_mock.py`.
-"""
 from __future__ import annotations
 
 import io
@@ -47,7 +40,6 @@ async def client(monkeypatch, tmp_path):
 
 
 class _NoopDelay:
-    """Stand-in for the Celery task object; records calls instead of dispatching."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
@@ -65,7 +57,13 @@ def test_health_check(client):
 def test_upload_rejects_unsupported_extension(client):
     resp = client.post(
         "/api/v1/documents",
-        files={"file": ("doc.exe", io.BytesIO(b"binary"), "application/octet-stream")},
+        files={
+            "file": (
+                "doc.exe",
+                io.BytesIO(b"binary"),
+                "application/octet-stream",
+            )
+        },
     )
     assert resp.status_code == 415
 
@@ -80,10 +78,20 @@ def test_upload_rejects_empty_file(client):
 
 def test_upload_rejects_oversized_file(client, monkeypatch):
     settings = routes_module.get_settings()
-    monkeypatch.setattr(settings, "max_file_size_mb", 0)  # anything is "too big"
+    monkeypatch.setattr(
+        settings,
+        "max_file_size_mb",
+        0,
+    )  # anything is "too big"
     resp = client.post(
         "/api/v1/documents",
-        files={"file": ("doc.txt", io.BytesIO(b"not empty"), "text/plain")},
+        files={
+            "file": (
+                "doc.txt",
+                io.BytesIO(b"not empty"),
+                "text/plain",
+            )
+        },
     )
     assert resp.status_code == 413
 
@@ -91,7 +99,15 @@ def test_upload_rejects_oversized_file(client, monkeypatch):
 def test_upload_accepts_txt_and_returns_queued_status(client):
     resp = client.post(
         "/api/v1/documents",
-        files={"file": ("brief.txt", io.BytesIO(b"Company: Acme\nTask: build a pilot"), "text/plain")},
+        files={
+            "file": (
+                "brief.txt",
+                io.BytesIO(
+                    b"Company: Acme\nTask: build a pilot"
+                ),
+                "text/plain",
+            )
+        },
     )
     assert resp.status_code == 201
     body = resp.json()
@@ -102,8 +118,14 @@ def test_upload_accepts_txt_and_returns_queued_status(client):
 
 def test_repeated_upload_is_idempotent(client):
     content = b"Company: Acme\nTask: build a pilot, same bytes twice"
-    first = client.post("/api/v1/documents", files={"file": ("a.txt", io.BytesIO(content), "text/plain")})
-    second = client.post("/api/v1/documents", files={"file": ("b.txt", io.BytesIO(content), "text/plain")})
+    first = client.post(
+        "/api/v1/documents",
+        files={"file": ("a.txt", io.BytesIO(content), "text/plain")},
+    )
+    second = client.post(
+        "/api/v1/documents",
+        files={"file": ("b.txt", io.BytesIO(content), "text/plain")},
+    )
 
     assert first.status_code == 201
     assert second.status_code == 201
@@ -119,7 +141,13 @@ def test_get_unknown_task_returns_404(client):
 def test_approve_before_completion_returns_conflict(client):
     upload = client.post(
         "/api/v1/documents",
-        files={"file": ("c.txt", io.BytesIO(b"Task: something"), "text/plain")},
+        files={
+            "file": (
+                "c.txt",
+                io.BytesIO(b"Task: something"),
+                "text/plain",
+            )
+        },
     )
     task_id = upload.json()["task_id"]
     resp = client.post(f"/api/v1/tasks/{task_id}/approve")

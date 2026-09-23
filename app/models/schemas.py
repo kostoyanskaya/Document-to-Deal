@@ -86,7 +86,6 @@ class PipelineResult(BaseModel):
 
 
 class TaskRecord(BaseModel):
-    """What we persist in Redis and return from GET /tasks/{id}."""
 
     task_id: str
     status: TaskStatus
@@ -105,7 +104,8 @@ class UploadResponse(BaseModel):
     task_id: str
     status: TaskStatus
     idempotent: bool = Field(
-        description="True if an identical file (by SHA-256) was already submitted"
+        description="True if an identical file (by SHA-256) "
+        "was already submitted",
     )
 
 

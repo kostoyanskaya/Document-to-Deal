@@ -17,8 +17,9 @@ configure_logging(settings.log_level)
 app = FastAPI(
     title=settings.app_name,
     description=(
-        "Safe MVP pilot: turns one client document into a lead card, an analytical "
-        "brief and a proposal draft. Isolated demo module — no real CRM, data or access."
+        "Safe MVP pilot: turns one client document into a lead card, an "
+        "analytical brief and a proposal draft. Isolated demo module — no "
+        "real CRM, data or access."
     ),
     version="0.1.0",
 )

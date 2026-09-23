@@ -27,17 +27,19 @@ class TaskStore:
             created_at=_now_iso(),
             updated_at=_now_iso(),
         )
-        await self._redis.set(_TASK_PREFIX + task_id, record.model_dump_json())
+        await self._redis.set(
+            _TASK_PREFIX + task_id,
+            record.model_dump_json(),
+        )
         return record
 
     async def create_task_if_hash_absent(
-        self, file_hash: str, task_id: str, filename: str
+        self,
+        file_hash: str,
+        task_id: str,
+        filename: str,
     ) -> bool:
-        """Atomically reserve a content hash and create its task record.
 
-        SET NX prevents two concurrent identical uploads from creating
-        separate tasks between a read and a later write.
-        """
         record = TaskRecord(
             task_id=task_id,
             status=TaskStatus.QUEUED,
@@ -63,10 +65,17 @@ class TaskStore:
 
     async def save_task(self, record: TaskRecord) -> None:
         record.updated_at = _now_iso()
-        await self._redis.set(_TASK_PREFIX + record.task_id, record.model_dump_json())
+        await self._redis.set(
+            _TASK_PREFIX + record.task_id,
+            record.model_dump_json(),
+        )
 
     async def get_task_id_for_hash(self, file_hash: str) -> str | None:
         return await self._redis.get(_HASH_PREFIX + file_hash)
 
     async def link_hash_to_task(self, file_hash: str, task_id: str) -> None:
-        await self._redis.set(_HASH_PREFIX + file_hash, task_id, ex=self._ttl)
+        await self._redis.set(
+            _HASH_PREFIX + file_hash,
+            task_id,
+            ex=self._ttl,
+        )
