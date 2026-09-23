@@ -1,4 +1,3 @@
-"""End-to-end pipeline tests, always using LLM_PROVIDER=mock (no network, no API key)."""
 from __future__ import annotations
 
 import pytest
@@ -27,7 +26,7 @@ async def test_pipeline_blocks_injection_document_without_producing_output(injec
     assert result.lead_card is None
     assert result.brief_markdown is None
     assert result.proposal_markdown is None
-    assert result.security_reasons  # matched rule names recorded for auditability
+    assert result.security_reasons
 
 
 @pytest.mark.asyncio

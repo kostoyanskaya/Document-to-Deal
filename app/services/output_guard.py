@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-_MIN_FRAGMENT_LEN = 40  # достаточно длинный кусок, чтобы не ловить случайные совпадения
+_MIN_FRAGMENT_LEN = 40
 
 
 def _significant_lines(prompt: str) -> list[str]:
@@ -8,12 +8,6 @@ def _significant_lines(prompt: str) -> list[str]:
 
 
 def find_leaked_system_prompt_fragments(outputs: list[str | None], system_prompts: list[str]) -> list[str]:
-    """Return the system-prompt lines that verbatim leaked into any of `outputs`.
-
-    This is a cheap, deterministic last line of defense (layer 3 in the
-    threat model): it does not try to detect paraphrased leaks, only
-    near-verbatim reproduction of our own instructions in the model output.
-    """
     hits: list[str] = []
     combined_output = "\n".join(o for o in outputs if o)
     if not combined_output:

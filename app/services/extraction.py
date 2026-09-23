@@ -28,7 +28,7 @@ def _extract_txt(file_path: Path) -> str:
 def _extract_pdf(file_path: Path) -> str:
     try:
         reader = PdfReader(str(file_path))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise DocumentParsingError(f"Could not read PDF: {exc}") from exc
     pages = [page.extract_text() or "" for page in reader.pages]
     return "\n".join(pages).strip()
@@ -37,6 +37,6 @@ def _extract_pdf(file_path: Path) -> str:
 def _extract_docx(file_path: Path) -> str:
     try:
         doc = DocxDocument(str(file_path))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise DocumentParsingError(f"Could not read DOCX: {exc}") from exc
     return "\n".join(p.text for p in doc.paragraphs).strip()

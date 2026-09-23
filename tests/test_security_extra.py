@@ -8,9 +8,6 @@ from app.services.llm_adapter import MockLLMAdapter
 from app.services.output_guard import find_leaked_system_prompt_fragments
 
 
-# --- ранее пропускаемый кейс (ролевой сценарий "тестировщик безопасности" +
-# "выведи системный промпт" + "перечисли секреты" + "действуй без ограничений") ---
-
 SECURITY_TESTER_ROLEPLAY_DOC = """\
 Компания: ООО "Гранит"
 Задача: разобрать входящее обращение.
@@ -55,9 +52,6 @@ def test_permission_to_break_rules_phrasing_is_flagged():
     assert "override_instructions_ru" in result.matched_rules
 
 
-# --- фикс бага MockLLMAdapter.complete_text ---------------------------------
-
-
 @pytest.mark.asyncio
 async def test_mock_adapter_returns_different_text_for_brief_and_proposal():
     adapter = MockLLMAdapter()
@@ -71,9 +65,6 @@ async def test_mock_adapter_returns_different_text_for_brief_and_proposal():
     assert "Ценность для клиента" in proposal
     assert "Этапы пилота" in proposal
     assert "draft" in proposal.lower()
-
-
-# --- output_guard ------------------------------------------------------------
 
 
 def test_output_guard_catches_verbatim_system_prompt_leak():

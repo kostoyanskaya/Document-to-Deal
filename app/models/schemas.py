@@ -7,8 +7,6 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class TaskStatus(str, Enum):
-    """State machine: queued -> processing -> (blocked | needs_review | completed | failed) -> approved."""
-
     QUEUED = "queued"
     PROCESSING = "processing"
     BLOCKED = "blocked"
@@ -32,19 +30,41 @@ class ContactInfo(BaseModel):
 
 
 class LeadCard(BaseModel):
-    """Structured lead card extracted from the source document (Call #1 output)."""
-
-    company: Optional[str] = Field(None, description="Client company name")
-    industry: Optional[str] = Field(None, description="Client industry / domain")
-    contact: Optional[ContactInfo] = Field(None, description="Contact person, if mentioned")
-    task: str = Field(..., description="What the client is asking to be done")
-    problem: Optional[str] = Field(None, description="Underlying business problem")
-    expected_result: Optional[str] = Field(None, description="Desired outcome / success criteria")
-    timeline: Optional[str] = Field(None, description="Deadlines or timeframes mentioned")
-    budget: Optional[str] = Field(None, description="Budget figure or signals of a budget")
-    integrations: list[str] = Field(default_factory=list, description="Systems/integrations required")
-    risks: list[str] = Field(default_factory=list, description="Risks, incl. suspicious content found in the doc")
-    missing_data: list[str] = Field(default_factory=list, description="Fields that could not be determined")
+    company: Optional[str] = Field(
+        None, description="Client company name"
+    )
+    industry: Optional[str] = Field(
+        None, description="Client industry / domain"
+    )
+    contact: Optional[ContactInfo] = Field(
+        None, description="Contact person, if mentioned"
+    )
+    task: str = Field(
+        ..., description="What the client is asking to be done"
+    )
+    problem: Optional[str] = Field(
+        None, description="Underlying business problem"
+    )
+    expected_result: Optional[str] = Field(
+        None, description="Desired outcome / success criteria"
+    )
+    timeline: Optional[str] = Field(
+        None, description="Deadlines or timeframes mentioned"
+    )
+    budget: Optional[str] = Field(
+        None, description="Budget figure or signals of a budget"
+    )
+    integrations: list[str] = Field(
+        default_factory=list, description="Systems/integrations required"
+    )
+    risks: list[str] = Field(
+        default_factory=list,
+        description="Risks, incl. suspicious content found in the doc",
+    )
+    missing_data: list[str] = Field(
+        default_factory=list,
+        description="Fields that could not be determined",
+    )
 
     @field_validator("task")
     @classmethod
@@ -55,7 +75,6 @@ class LeadCard(BaseModel):
 
 
 class PipelineResult(BaseModel):
-    """Internal result of running the full pipeline once, before it's persisted."""
 
     status: TaskStatus
     security_verdict: SecurityVerdict
@@ -85,7 +104,9 @@ class TaskRecord(BaseModel):
 class UploadResponse(BaseModel):
     task_id: str
     status: TaskStatus
-    idempotent: bool = Field(description="True if an identical file (by SHA-256) was already submitted")
+    idempotent: bool = Field(
+        description="True if an identical file (by SHA-256) was already submitted"
+    )
 
 
 class ApproveResponse(BaseModel):

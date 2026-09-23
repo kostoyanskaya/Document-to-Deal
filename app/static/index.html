@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AthenAI · Document-to-Deal</title>
+  <title>Document-to-Deal</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
   <style>
     /* ---------- RESET & BASE ---------- */
@@ -139,12 +139,18 @@
       padding: 2rem;
       box-shadow: var(--shadow-md);
       border: 1px solid var(--border-light);
-      transition: box-shadow 0.25s, transform 0.25s;
+      transition: box-shadow 0.25s, transform 0.25s, border-color 0.25s, background 0.25s;
       animation: fadeUp 0.6s 0.05s ease both;
     }
 
     .upload-card:hover {
       box-shadow: var(--shadow-lg);
+    }
+
+    .upload-card.file-selected {
+      border-color: var(--success);
+      background: linear-gradient(135deg, #ffffff 0%, #f4fdf9 100%);
+      box-shadow: 0 12px 32px -8px rgba(6, 182, 126, 0.18);
     }
 
     .upload-grid {
@@ -566,22 +572,19 @@
     <header class="header">
       <div class="header-top">
         <div class="logo-mark">
-          <span class="icon">➩</span>
-          <span>AthenAI</span>
         </div>
-        <span class="badge-safe">Safe MVP · demo · no real data</span>
       </div>
       <h1>Document-to-Deal Pilot</h1>
-      <p>Загрузите бриф, ТЗ или заявку — сервис извлечёт карточку лида, соберёт аналитический бриф и черновик КП. Всё остаётся в статусе <strong>draft</strong>.</p>
+      <p>Загрузите бриф, ТЗ или заявку — сервис извлечёт карточку лида, соберёт аналитический бриф и черновик КП.</p>
     </header>
 
     <!-- UPLOAD CARD -->
-    <div class="upload-card">
+    <div class="upload-card" id="uploadCard">
       <div class="upload-grid">
         <!-- Dropzone -->
         <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Загрузить файл">
           <div class="dropzone-icon">📄</div>
-          <div class="dropzone-title">Перетащите файл сюда</div>
+          <div class="dropzone-title" id="dropzoneTitle">Перетащите файл сюда</div>
           <div class="dropzone-sub">или нажмите, чтобы выбрать · <strong>PDF, DOCX, TXT</strong> · до 10 МБ</div>
           <input type="file" id="fileInput" accept=".pdf,.docx,.txt" class="sr-only">
         </div>
@@ -647,6 +650,8 @@
     const fileChip      = document.getElementById("fileChip");
     const statusEl      = document.getElementById("status");
     const resultsEl     = document.getElementById("results");
+    const uploadCard    = document.getElementById("uploadCard");
+    const dropzoneTitle = document.getElementById("dropzoneTitle");
     const tabs          = document.querySelectorAll(".tab-btn");
     const panels        = document.querySelectorAll(".tab-panel");
 
@@ -682,6 +687,8 @@
       fileChip.classList.remove("empty");
       fileChip.querySelector(".file-icon").textContent = getFileIcon(file.name);
       uploadBtn.disabled = false;
+      uploadCard.classList.add("file-selected");
+      dropzoneTitle.textContent = "Файл добавлен";
     }
 
     function getFileIcon(name) {
